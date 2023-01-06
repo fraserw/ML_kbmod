@@ -13,8 +13,8 @@ class vetter():
                  chip='040',
                  stamps_dir ='/media/fraserw/rocketdata/Projects/kbmod/stamps',
                  stamps_grid = (9, 7),
-                 results_dir = '/media/fraserw/rocketdata/Projects/kbmod/warps_results/',
-                 plantLists_dir = '/media/fraserw/SecondStage/Projects/kbmod/DATA/rerun/diff_warpCompare/deepDiff/03447/HSC-R2/warps/',
+                 results_dir = '/media/fraserw/rocketdata/Projects/kbmod/kbmod_results/',
+                 plantLists_dir = '/media/fraserw/SecondStage/Projects/kbmod/DATA/rerun/diff_warpCompare/deepDiff/03447/HSC-R2/plantLists/',
                  max_assoc_dist = 3.0,
                  contrast = 0.5
                  ):
@@ -22,21 +22,26 @@ class vetter():
         self.stamps_grid = np.array(stamps_grid)
 
         # load the ML classes
-        print('Loading ML results from '+results_dir+f'{visit}/results_{chip}_upper_0/classes.pickle')
-        self.classes_fn = results_dir+f'{visit}/results_{chip}_upper_0/classes.pickle'
+        if len(visit)==5:
+            self.classes_fn = results_dir+f'{visit}/results_{chip}_upper_0/rn_classes.pickle'
+        else:
+            self.classes_fn = results_dir+f'{visit}/results_{chip}/rn_classes.pickle'
+        print('Loading ML results from '+self.classes_fn)
         with open(self.classes_fn, 'rb') as han:
             self.classes = pickle.load(han)
-
 
 
         # load the stamps
         self.stamps_dir = stamps_dir
         if self.stamps_dir[-1]!='!':
             self.stamps_dir += '/'
-        self.stamps_dir+=visit+'/'
+        if len(visit)==5:
+            self.stamps_dir+=visit+'/'
 
-        self.stamp_files = glob.glob(self.stamps_dir+f'stamps_tg_{chip}_w_med.pickle')
-
+        if len(visit)==5:
+            self.stamp_files = glob.glob(self.stamps_dir+f'stamps_tg_{chip}_w_med.pickle')
+        else:
+            self.stamp_files = glob.glob(self.stamps_dir+f'stamps_tg_{chip}_w_sr_med.pickle')
 
         # wide median stamps
         with open(self.stamp_files[0], 'rb') as han:
@@ -49,14 +54,20 @@ class vetter():
         w = np.where(np.isnan(stamps_mean))
         stamps_mean[w] = -1000.
 
-        self.all_stamps = [stamps_med[:, 5, :, :], stamps_mean[:, 5, :, :]]
+        if len(stamps_med.shape)==4:
+            self.all_stamps = [stamps_med[:, 5, :, :], stamps_mean[:, 5, :, :]]
+        else:
+            self.all_stamps = [stamps_med[:, :, :], stamps_mean[:, :, :]]
         self.stamps = [self.all_stamps[0][np.where(self.classes)], self.all_stamps[1][np.where(self.classes)]]
 
 
-
         # load the kbmod results file
-        with open(results_dir+f'{visit}/results_{chip}_upper_0/results_MERGED.txt') as han:
-            data = han.readlines()
+        if len(visit) == 5:
+            with open(results_dir+f'{visit}/results_{chip}_upper_0/results_MERGED.txt') as han:
+                data = han.readlines()
+        else:
+            with open(results_dir+f'{visit}/results_{chip}/results_.txt') as han:
+                data = han.readlines()
         self.all_kb_xy = []
         for i in range(len(data)):
             s = data[i].split()
@@ -70,16 +81,23 @@ class vetter():
         self.all_kb_xy = np.array(self.all_kb_xy)
         self.kb_xy = self.all_kb_xy[np.where(self.classes)]
 
+        if len(self.all_stamps[0])!= len(self.all_kb_xy) or len(self.all_stamps[1])!= len(self.all_kb_xy) or len(self.classes)!=len(self.all_kb_xy):
+            print('WARNING: Stamps length, kbmod output length, and/or classes length do not match!')
+            print(len(self.all_stamps[0]), len(self.all_stamps[1]), len(self.all_kb_xy),len(self.classes))
+            exit()
+
         #sort the kb_xy and the stamps
         self.sort_args = np.argsort(self.kb_xy[:,0])
         self.kb_xy = self.kb_xy[self.sort_args]
         self.stamps = [self.stamps[0][self.sort_args], self.stamps[1][self.sort_args]]
+
 
         # load the plantList in case the user decides to display them
         plantLists = glob.glob(f'{plantLists_dir}/{chip}/*plantList')
         plantLists.sort()
         if len(plantLists) > 0:
             self.plantList = plantLists[0]
+            print(f'Using planted sources in {self.plantList}')
             self.plant_xy = []
             with open(self.plantList) as han:
                 data = han.readlines()
@@ -93,6 +111,7 @@ class vetter():
                     arg = np.argmin(dist)
                     if dist[arg]<max_assoc_dist:
                         self.plant_xy[-1][3] = arg
+                    #print(self.plant_xy[-1], dist[arg])
             self.plant_xy = np.array(self.plant_xy)
         else:
             self.plant_xy = np.array([[0., 0., 0., 0., 0.]])
@@ -277,6 +296,7 @@ class vetter():
         vedder.get_zscale()
         vedder.make_window(window_size_scale=window_size_scale)
         vedder.display_stamps()
+
         vedder.display_stamps(start_ind = vedder.vet_counter)
 
         return self.saved
@@ -284,15 +304,26 @@ class vetter():
 if __name__ == "__main__":
 
     import sys
-    chip = '000'
     visit = '03447'
+    chip = '050'
     if len(sys.argv)>1:
-        chip = str(sys.argv[1]).zfill(3)
-        visit = sys.argv[2]
+        visit = sys.argv[1]
+        chip = str(sys.argv[2]).zfill(3)
 
-    contrasts = {'03447': 0.5, '03455': 0.6, '00000':0.5}
+    contrasts = {'03447': 0.5, '03455': 0.6, '00000':0.5, '03473': 0.5, '03805': 0.5, '03806': 0.5, '03832': 0.5, '03833': 0.5, '2022-08-22': 0.5}
 
-    vedder = vetter(chip = chip, visit = visit,
-                    plantLists_dir = f'/media/fraserw/SecondStage/Projects/kbmod/DATA/rerun/diff_warpCompare/deepDiff/{visit}/HSC-R2/warps/',
-                    contrast = contrasts[visit])
+    if len(visit)>5:
+        chip = chip[1:]
+        vedder = vetter(chip = chip, visit = visit,
+                        stamps_dir =f'/media/fraserw/SecondStage/Projects/kbmod/DATA/rerun/diff_warpCompare/deepDiff/{visit}/warps/',
+                        stamps_grid = (9, 7),
+                        results_dir = '/media/fraserw/rocketdata/Projects/kbmod/kbmod_results/',
+                        plantLists_dir = f'/media/fraserw/SecondStage/Projects/kbmod/DATA/rerun/diff_warpCompare/deepDiff/{visit}/HSC-R2/warps/',
+                        contrast = contrasts[visit],
+                        max_assoc_dist = 5.0)
+
+    else:
+        vedder = vetter(chip = chip, visit = visit,
+                        plantLists_dir = f'/media/fraserw/SecondStage/Projects/kbmod/DATA/rerun/diff_warpCompare/deepDiff/{visit}/HSC-R2/plantLists/',
+                        contrast = contrasts[visit])
     vedder.activate(window_size_scale=2.2)
