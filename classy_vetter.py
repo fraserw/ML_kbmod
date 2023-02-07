@@ -20,21 +20,30 @@ class vetter():
                  visit='1981-04-27',
                  chip='41',
                  stamps_dir ='/media/fraserw/rocketdata/Projects/kbmod/stamps',
-                 stamps_grid = (9, 7),
                  results_dir = '/media/fraserw/rocketdata/Projects/kbmod/kbmod_results/',
                  plantLists_dir = '/media/fraserw/SecondStage/Projects/kbmod/DATA/rerun/diff_warpCompare/deepDiff/03447/HSC-R2/plantLists/',
                  personal_vets_path = '~/vets.out',
+                 rtstamps_dir = None,
+                 rtplantLists_dir = None,
+                 rtresults_dir = None,
+                 stamps_grid = (9, 7),
                  max_assoc_dist = 3.0,
                  contrast = 0.5
                  ):
         # subplot # wide and high
         self.stamps_grid = np.array(stamps_grid)
 
+
         # load the ML classes
         self.classes_fn = f'{results_dir}/{visit}/results_{chip}/rn_classes.pickle'
-        print('Loading ML results from '+self.classes_fn)
+        print('Loading ML results from :\n   '+self.classes_fn)
         with open(self.classes_fn, 'rb') as han:
             self.classes = pickle.load(han)
+
+        if rtresults_dir is not None:
+            self.rtclasses_fn = f'{rtresults_dir}/{visit}/results_{chip}/rn_classes.pickle'
+            with open(self.rtclasses_fn, 'rb') as han:
+                self.classes = np.concatenate([self.classes, pickle.load(han)])
 
 
         # load the stamps
@@ -48,11 +57,25 @@ class vetter():
         # wide median stamps
         with open(self.stamp_files[0], 'rb') as han:
             stamps_med = pickle.load(han)
-        w = np.where(np.isnan(stamps_med))
-        stamps_med[w] = -1000.
         # wide mean stamps
         with open(self.stamp_files[0].replace('_med.', '.'), 'rb') as han:
             stamps_mean = pickle.load(han)
+
+
+        
+        if rtstamps_dir is not None:
+            self.rtstamp_files = glob.glob(f'{rtstamps_dir}/{visit}/stamps_tg_{chip}_w_sr_med.pickle')
+            # wide median stamps
+            with open(self.rtstamp_files[0], 'rb') as han:
+                stamps_med = np.concatenate([stamps_med, pickle.load(han)])
+            # wide mean stamps
+            with open(self.rtstamp_files[0].replace('_med.', '.'), 'rb') as han:
+                stamps_mean = np.concatenate([stamps_mean, pickle.load(han)])
+
+            
+        # nuke obviously bad pixels
+        w = np.where(np.isnan(stamps_med))
+        stamps_med[w] = -1000.
         w = np.where(np.isnan(stamps_mean))
         stamps_mean[w] = -1000.
 
@@ -63,6 +86,7 @@ class vetter():
         self.stamps = [self.all_stamps[0][np.where(self.classes)], self.all_stamps[1][np.where(self.classes)]]
 
 
+        
         # load the kbmod results file
         with open(results_dir+f'{visit}/results_{chip}/results_.txt') as han:
             data = han.readlines()
@@ -77,26 +101,52 @@ class vetter():
             vx = float(s[9])
             vy = float(s[11])
             self.all_kb_xy.append([x, y, l, f, vx, vy])
+
+        self.rt_start_ind = -1
+        if rtresults_dir is not None:
+            with open(rtresults_dir+f'{visit}/results_{chip}/results_.txt') as han:
+                data = han.readlines()
+            self.rt_start_ind = len(self.all_kb_xy)
+            
+            for i in range(len(data)):
+                s = data[i].split()
+                l = float(s[1])
+                f = float(s[3])
+                x = float(s[5])
+                y = float(s[7])
+                vx = float(s[9])
+                vy = float(s[11])
+                self.all_kb_xy.append([x, y, l, f, vx, vy])
+
         self.all_kb_xy = np.array(self.all_kb_xy)
         self.kb_xy = self.all_kb_xy[np.where(self.classes)]
 
+        if rtresults_dir is not None:
+            self.all_rt_indices = np.zeros(len(self.all_kb_xy))
+            self.all_rt_indices[self.rt_start_ind:] = 1
+            self.rt_indices = self.all_rt_indices[np.where(self.classes)]
+
+        # check if the lengths of all the arrays match, as they must.
         if len(self.all_stamps[0])!= len(self.all_kb_xy) or len(self.all_stamps[1])!= len(self.all_kb_xy) or len(self.classes)!=len(self.all_kb_xy):
-            print('WARNING: Stamps length, kbmod output length, and/or classes length do not match!')
-            print(f' stamps: len(self.all_stamps[0]), len(self.all_stamps[1]), kbmod results: len(self.all_kb_xy), rn_classes: len(self.classes)')
+            print('WARNING: Stamps length mean, median, kbmod output length, and/or classes length do not match!')
+            print(f' stamps: {len(self.all_stamps[0])}, {len(self.all_stamps[1])}, kbmod results: {len(self.all_kb_xy)}, rn_classes: {len(self.classes)}')
             exit()
+
 
         #sort the kb_xy and the stamps
         self.sort_args = np.argsort(self.kb_xy[:,0])
         self.kb_xy = self.kb_xy[self.sort_args]
         self.stamps = [self.stamps[0][self.sort_args], self.stamps[1][self.sort_args]]
-
+        if rtresults_dir is not None:
+            self.rt_indices = self.rt_indices[self.sort_args]
+        
 
         # load the plantList in case the user decides to display them
-        plantLists = glob.glob(f'{plantLists_dir}/{chip}/*plantList')
+        plantLists = glob.glob(f'{plantLists_dir}/{visit}/{chip}/*plantList')
         plantLists.sort()
         if len(plantLists) > 0:
             self.plantList = plantLists[0]
-            print(f'Using planted sources in {self.plantList}')
+            print(f'\nUsing planted sources in: \n   {self.plantList}')
             self.plant_xy = []
             with open(self.plantList) as han:
                 data = han.readlines()
@@ -113,8 +163,33 @@ class vetter():
                     #print(self.plant_xy[-1], dist[arg])
             self.plant_xy = np.array(self.plant_xy)
         else:
-            self.plant_xy = np.array([[0., 0., 0., 0., 0.]])
+            self.plant_xy = np.array([[-100., -100., 0., 0., 0.]])
 
+
+        if rtplantLists_dir is not None:
+            rtplantLists = glob.glob(f'{rtplantLists_dir}/{visit}/{chip}/*plantList')
+            rtplantLists.sort()
+            if len(plantLists) > 0:
+                self.rtplantList = rtplantLists[0]
+                self.rtplant_xy = []
+                with open(self.rtplantList) as han:
+                    data = han.readlines()
+                for i in range(1, len(data)):
+                    s = data[i].split()
+                    x,y,m = float(s[3]), float(s[4]), float(s[9])
+                    ind = int(float(s[0]))
+                    if m<27:
+                        self.rtplant_xy.append([x, y, m, -1, ind])
+                        dist = ((self.kb_xy[:, 0] - x)**2 + (self.kb_xy[:, 1] - y)**2)**0.5
+                        arg = np.argmin(dist)
+                        if dist[arg]<max_assoc_dist:
+                            self.rtplant_xy[-1][3] = arg
+                        #print(self.plant_xy[-1], dist[arg])
+                self.rtplant_xy = np.array(self.rtplant_xy)
+            else:
+                self.rtplant_xy = np.array([[-100., -100., 0., 0., 0.]])
+
+            
         # the vet results array
         self.all_elims = np.ones(self.stamps[0].shape[0], dtype='bool')
 
@@ -134,7 +209,7 @@ class vetter():
 
 
     def get_zscale(self, downscale = 5):
-        s = self.stamps[0][::downscale, :, :]
+        s = self.stamps[1][::downscale, :, :]
         (n, B, C) = s.shape
         s = s.reshape(n*B, C)
         (z1,z2) = tzscale.zscale(s, contrast = self.contrast)
@@ -150,10 +225,12 @@ class vetter():
 
     def save_vets(self):
         self._makedir(self.personal_vets_path)
+        print((f'{self.personal_vets_path}/rn_classes.vets'))
         outhan =  open(f'{self.personal_vets_path}/rn_classes.vets', 'w+')
         print('#  x     y      vx      vy       like     flux Good/Bogus Planted # plant object ind x y mag', file=outhan)
         print('#  x     y      vx      vy       like     flux Good/Bogus Planted # plant object ind x y mag')
         for i in range(len(self.all_elims)):
+            if self.rt_indices[i]: continue
             (x,y,l,f,vx,vy) = self.kb_xy[i]
             if i in self.plant_xy[:, 3]:
                 w = np.where( self.plant_xy[:, 3] == i)
@@ -163,11 +240,31 @@ class vetter():
             else:
                 print('{:>5} {:>5} {:8.2f} {:8.2f} {:8.2f} {:8.2f}  {}  {}'.format(int(x), int(y), vx, vy, l, f, 'G' if ~self.all_elims[i] else 'B', 'T' if i in self.plant_xy[:,3] else 'F'), file=outhan)
                 print('{:>5} {:>5} {:8.2f} {:8.2f} {:8.2f} {:8.2f}  {}  {}'.format(int(x), int(y), vx, vy, l, f, 'G' if ~self.all_elims[i] else 'B', 'T' if i in self.plant_xy[:,3] else 'F'))
+        outhan.close()
+
+        print('\nRandomized-time vets')
+        outhan =  open(f'{self.personal_vets_path}/rt_rn_classes.vets', 'w+')
+        print('#  x     y      vx      vy       like     flux Good/Bogus Planted # plant object ind x y mag', file=outhan)
+        print('#  x     y      vx      vy       like     flux Good/Bogus Planted # plant object ind x y mag')
+        for i in range(len(self.all_elims)):
+            if not self.rt_indices[i]: continue
+            (x,y,l,f,vx,vy) = self.kb_xy[i]
+            if i in self.rtplant_xy[:, 3]:
+                w = np.where( self.rtplant_xy[:, 3] == i)
+                (px, py, pm, bunk, p_ind) = self.rtplant_xy[w][0]
+                print('{:>5} {:>5} {:8.2f} {:8.2f} {:8.2f} {:8.2f}  {}  {}  # {:>6} {:6.1f} {:6.1f} {:5.2f}'.format(int(x), int(y), vx, vy, l, f, 'G' if ~self.all_elims[i] else 'B', 'T' if i in self.rtplant_xy[:,3] else 'F', int(p_ind), px, py, pm), file=outhan)
+                print('{:>5} {:>5} {:8.2f} {:8.2f} {:8.2f} {:8.2f}  {}  {}  # {:>6} {:6.1f} {:6.1f} {:5.2f}'.format(int(x), int(y), vx, vy, l, f, 'G' if ~self.all_elims[i] else 'B', 'T' if i in self.rtplant_xy[:,3] else 'F', int(p_ind), px, py, pm))
+            else:
+                print('{:>5} {:>5} {:8.2f} {:8.2f} {:8.2f} {:8.2f}  {}  {}'.format(int(x), int(y), vx, vy, l, f, 'G' if ~self.all_elims[i] else 'B', 'T' if i in self.rtplant_xy[:,3] else 'F'), file=outhan)
+                print('{:>5} {:>5} {:8.2f} {:8.2f} {:8.2f} {:8.2f}  {}  {}'.format(int(x), int(y), vx, vy, l, f, 'G' if ~self.all_elims[i] else 'B', 'T' if i in self.rtplant_xy[:,3] else 'F'))
+        outhan.close()
+
         self.saved = True
-        print('Saved all vets.')
+        print('\nSaved all vets.')
 
     
     def _makedir(self, pdir):
+        print(pdir)
         if not os.path.isdir(pdir):
             os.makedirs(pdir)
             
@@ -200,15 +297,18 @@ class vetter():
                 if start_ind+sp_ind <len(self.stamps[0]):
                     if start_ind+sp_ind in self.plant_xy[:, 3] and self.reveal_plants:
                         colour = 'r'
+                    elif start_ind+sp_ind in self.rtplant_xy[:, 3] and self.reveal_plants:
+                        colour = 'orange'
                     else:
-                        colour='0.8'
+                        colour='0.9'
                     #text = f'l: {int(self.kb_xy[start_ind+sp_ind][2])} f: {int(self.kb_xy[start_ind+sp_ind][3])} '
                     text = 'l:{:.1f} f:{} '.format(self.kb_xy[start_ind+sp_ind][2], int(self.kb_xy[start_ind+sp_ind][3]))
-                    text += f'({int(self.kb_xy[start_ind+sp_ind][0])}, {int(self.kb_xy[start_ind+sp_ind][1])})'
-                    self.subplots[sp_ind].text(self.stamps_shape[1], 5.0,
-                                               text,
-                                               color=colour, horizontalalignment='center',
-                                               fontweight = 'bold', fontsize=12)
+                    #text += f'({int(self.kb_xy[start_ind+sp_ind][0])}, {int(self.kb_xy[start_ind+sp_ind][1])})'
+                    t = self.subplots[sp_ind].text(self.stamps_shape[1], 5.0,
+                                                   text,
+                                                   color=colour, horizontalalignment='center',
+                                                   fontweight = 'bold', fontsize=12)
+                    t.set_bbox(dict(facecolor='skyblue', alpha=0.75))
 
                     double_stamp = np.concatenate([self.stamps[0][start_ind+sp_ind].T, self.stamps[1][start_ind+sp_ind].T]).T
 
@@ -303,7 +403,7 @@ class vetter():
             print("\nHelp:\n")
             print('   The left and right images of a source display the median and mean         ')
             print('   shift-stacks respectively. The source information at the top shows the    ')
-            print('   kbmod likelihood, flux estimate, and (x,y) pixel positions.')
+            print('   kbmod likelihood, flux estimate. NOT SHOWING (x,y) pixel positions.')
             print('')
             print('   mouse click - to select/deselect a candidate.                             ')
             print('                 BLUE outline means GOOD source')
@@ -313,8 +413,8 @@ class vetter():
             print('     enough to need more than one screen. BUG: going back will erase         ')
             print('     previously selected sources.')
             print('   p -  label in red all of those sources close enough to be associated  with')
-            print('     a planted source. USE ONLY FOR TRAINING PURPOSES AND DO NOT HAVE ON')
-            print('     during vetting.')
+            print('     a planted source. Orange used to demark randomized time plants. USE ONLY')
+            print('     FOR TRAINING PURPOSES AND DO NOT HAVE ON DURING VETTING.')
             print('   a - toggle all DISPLAYED sources as good or bad.')
             print('   w - write vet selection to disk. Selection will be printed in terminal.')
             print('   q - quit. Will only quit if vets written first.')
@@ -354,13 +454,29 @@ if __name__ == "__main__":
     saves_path = f'/arc/home/{get_username()}/classy_vets/'
 
 
+    if visit in ['2022-08-01-AS1_July',
+                 '2022-08-04-AS2',
+                 '2022-08-26-AS1',
+                 '2022-08-27-AS1',
+                 '2022-08-27-ON1',]:
+        rtplantLists_dir =  '/arc/projects/classy/rtwarps/'
+        rtstamps_dir = '/arc/projects/classy/rtwarps/'
+        rtresults_dir = '/arc/projects/classy/rtkbmod_results/'
+    else:
+        rtstamps_dir = None
+        rtplantLists_dir = None
+        rtresults_dir = None
+    
 
     eddie = vetter(chip = chip, visit = visit,
-                   stamps_dir =f'/arc/projects/classy/warps/',
-                   stamps_grid = (9, 7),
+                   stamps_dir ='/arc/projects/classy/warps/',
+                   rtstamps_dir = rtstamps_dir,
                    results_dir = f'/arc/projects/classy/kbmod_results/',
-                   plantLists_dir = f'/arc/projects/classy/warps/',
+                   plantLists_dir = '/arc/projects/classy/warps/',
                    personal_vets_path = f'{saves_path}',
+                   rtplantLists_dir = rtplantLists_dir,
+                   rtresults_dir = rtresults_dir,
+                   stamps_grid = (9, 7),
                    contrast = contrast,
                    max_assoc_dist = 5.0)
 
