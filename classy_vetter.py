@@ -2,19 +2,28 @@ import pylab as pyl, numpy as np
 import glob, pickle
 from trippy import tzscale
 from astropy.visualization import interval
+import matplotlib
 
 pyl.rcParams['keymap.quit'].remove('q')
 pyl.rcParams['keymap.save'].remove('s')
 
+matplotlib.use('tkagg')
+#tkagg seems to work with keypress events
+# QT based backends cause the QT bug and do not respond to keyboard events
+# GTK3Agg requires pycairo be installed, which it is not. As does any Cairo
+# nbagg requires ipython
+# webagg doesn't display
+
 class vetter():
 
     def __init__(self,
-                 visit='03447',
-                 chip='040',
+                 visit='1981-04-27',
+                 chip='41',
                  stamps_dir ='/media/fraserw/rocketdata/Projects/kbmod/stamps',
                  stamps_grid = (9, 7),
                  results_dir = '/media/fraserw/rocketdata/Projects/kbmod/kbmod_results/',
                  plantLists_dir = '/media/fraserw/SecondStage/Projects/kbmod/DATA/rerun/diff_warpCompare/deepDiff/03447/HSC-R2/plantLists/',
+                 personal_vets_path = '~/vets.out',
                  max_assoc_dist = 3.0,
                  contrast = 0.5
                  ):
@@ -22,10 +31,7 @@ class vetter():
         self.stamps_grid = np.array(stamps_grid)
 
         # load the ML classes
-        if len(visit)==5:
-            self.classes_fn = results_dir+f'{visit}/results_{chip}_upper_0/rn_classes.pickle'
-        else:
-            self.classes_fn = results_dir+f'{visit}/results_{chip}/rn_classes.pickle'
+        self.classes_fn = f'{results_dir}/{visit}/results_{chip}/rn_classes.pickle'
         print('Loading ML results from '+self.classes_fn)
         with open(self.classes_fn, 'rb') as han:
             self.classes = pickle.load(han)
@@ -35,13 +41,9 @@ class vetter():
         self.stamps_dir = stamps_dir
         if self.stamps_dir[-1]!='!':
             self.stamps_dir += '/'
-        if len(visit)==5:
-            self.stamps_dir+=visit+'/'
 
-        if len(visit)==5:
-            self.stamp_files = glob.glob(self.stamps_dir+f'stamps_tg_{chip}_w_med.pickle')
-        else:
-            self.stamp_files = glob.glob(self.stamps_dir+f'stamps_tg_{chip}_w_sr_med.pickle')
+        
+        self.stamp_files = glob.glob(f'{self.stamps_dir}/{visit}/stamps_tg_{chip}_w_sr_med.pickle')
 
         # wide median stamps
         with open(self.stamp_files[0], 'rb') as han:
@@ -62,12 +64,9 @@ class vetter():
 
 
         # load the kbmod results file
-        if len(visit) == 5:
-            with open(results_dir+f'{visit}/results_{chip}_upper_0/results_MERGED.txt') as han:
-                data = han.readlines()
-        else:
-            with open(results_dir+f'{visit}/results_{chip}/results_.txt') as han:
-                data = han.readlines()
+        with open(results_dir+f'{visit}/results_{chip}/results_.txt') as han:
+            data = han.readlines()
+
         self.all_kb_xy = []
         for i in range(len(data)):
             s = data[i].split()
@@ -83,7 +82,7 @@ class vetter():
 
         if len(self.all_stamps[0])!= len(self.all_kb_xy) or len(self.all_stamps[1])!= len(self.all_kb_xy) or len(self.classes)!=len(self.all_kb_xy):
             print('WARNING: Stamps length, kbmod output length, and/or classes length do not match!')
-            print(len(self.all_stamps[0]), len(self.all_stamps[1]), len(self.all_kb_xy),len(self.classes))
+            print(f' stamps: len(self.all_stamps[0]), len(self.all_stamps[1]), kbmod results: len(self.all_kb_xy), rn_classes: len(self.classes)')
             exit()
 
         #sort the kb_xy and the stamps
@@ -131,6 +130,8 @@ class vetter():
 
         self.contrast = contrast
 
+        self.personal_vets_path = f'{personal_vets_path}/{visit}/{chip}/'
+
 
     def get_zscale(self, downscale = 5):
         s = self.stamps[0][::downscale, :, :]
@@ -148,7 +149,8 @@ class vetter():
         #print(self.all_elims[self.vet_counter:self.vet_counter+b])
 
     def save_vets(self):
-        outhan =  open(self.classes_fn.replace('classes', 'vets'), 'w+')
+        self._makedir(self.personal_vets_path)
+        outhan =  open(f'{self.personal_vets_path}/rn_classes.vets', 'w+')
         print('#  x     y      vx      vy       like     flux Good/Bogus Planted # plant object ind x y mag', file=outhan)
         print('#  x     y      vx      vy       like     flux Good/Bogus Planted # plant object ind x y mag')
         for i in range(len(self.all_elims)):
@@ -164,6 +166,11 @@ class vetter():
         self.saved = True
         print('Saved all vets.')
 
+    
+    def _makedir(self, pdir):
+        if not os.path.isdir(pdir):
+            os.makedirs(pdir)
+            
 
     def make_window(self, window_size_scale = 1.3):
 
@@ -217,10 +224,12 @@ class vetter():
 
 
         if not self.showing:
-            pyl.show()
             self.showing = True
+            pyl.show()
+        else:
             pyl.draw()
 
+            
     def selector_function(self, event):
         for i in range(self.stamps_grid[0]): #up down
             for j in range(self.stamps_grid[1]): #left right
@@ -252,7 +261,7 @@ class vetter():
                         #self.elims[sp_ind] = True
             pyl.draw()
 
-        if event.key in ['a', 'A']:
+        elif event.key in ['a', 'A']:
             print('Setting all to elimated')
             for i in range(self.stamps_grid[0]): #up down
                 for j in range(self.stamps_grid[1]): #left right
@@ -264,7 +273,7 @@ class vetter():
             pyl.draw()
 
 
-        if event.key in ['n', 'N']:
+        elif event.key in ['n', 'N']:
             # here we save the interim clicks
             self.save_single_frame_vets()
             print(self.vet_counter)
@@ -275,55 +284,84 @@ class vetter():
             else:
                 print('At end of list')
 
-        if event.key in ['b', 'b']:
+        elif event.key in ['b', 'b']:
             # here we save the interim clicks
             self.save_single_frame_vets()
             self.vet_counter -=self.stamps_grid[0]*self.stamps_grid[1]
             self.display_stamps(start_ind = self.vet_counter)
             pyl.draw()
 
-        if event.key in ['w', 'W']:
+        elif event.key in ['w', 'W']:
             self.save_single_frame_vets()
             self.save_vets()
 
-        if event.key in ['q', 'Q'] and self.saved:
+        elif event.key in ['q', 'Q'] and self.saved:
             print('Saved all vets. Quitting')
             pyl.close()
 
-
+        elif event.key =='?':
+            print("\nHelp:\n")
+            print('   The left and right images of a source display the median and mean         ')
+            print('   shift-stacks respectively. The source information at the top shows the    ')
+            print('   kbmod likelihood, flux estimate, and (x,y) pixel positions.')
+            print('')
+            print('   mouse click - to select/deselect a candidate.                             ')
+            print('                 BLUE outline means GOOD source')
+            print('                 RED outline means BAD source')
+            print('')
+            print('   n/b - display the next/previous set of candidates if set is numerous ')
+            print('     enough to need more than one screen. BUG: going back will erase         ')
+            print('     previously selected sources.')
+            print('   p -  label in red all of those sources close enough to be associated  with')
+            print('     a planted source. USE ONLY FOR TRAINING PURPOSES AND DO NOT HAVE ON')
+            print('     during vetting.')
+            print('   a - toggle all DISPLAYED sources as good or bad.')
+            print('   w - write vet selection to disk. Selection will be printed in terminal.')
+            print('   q - quit. Will only quit if vets written first.')
+            print('   ? - display this help text/')
+            print('')
+            
 
     def activate(self, window_size_scale=2.2):
-        vedder.get_zscale()
-        vedder.make_window(window_size_scale=window_size_scale)
-        vedder.display_stamps()
+        self.get_zscale()
+        self.make_window(window_size_scale=window_size_scale)
+        self.display_stamps()
 
-        vedder.display_stamps(start_ind = vedder.vet_counter)
+        self.display_stamps(start_ind = self.vet_counter)
 
         return self.saved
 
+
 if __name__ == "__main__":
+    def get_username():
+        return pwd.getpwuid(os.getuid())[0]
 
-    import sys
-    visit = '03447'
-    chip = '050'
-    if len(sys.argv)>1:
-        visit = sys.argv[1]
-        chip = str(sys.argv[2]).zfill(3)
+    import os, pwd, argparse
 
-    contrasts = {'03447': 0.5, '03455': 0.6, '00000':0.5, '03473': 0.5, '03805': 0.5, '03806': 0.5, '03832': 0.5, '03833': 0.5, '2022-08-22': 0.5}
+    parser = argparse.ArgumentParser()
+    parser.add_argument('visit', 
+                        help='The visit number of the data you wish to vet. e.g. 2022-08-01-AS1')
+    parser.add_argument('chip',
+                        help = 'The chip number of the data you wish to vet. e.g. 00')
+    parser.add_argument('--contrast', default=0.5,
+                        help = 'The z-zscale contrast used for display. DEFAULT=%(default)s.')
+    args = parser.parse_args()
 
-    if len(visit)>5:
-        chip = chip[1:]
-        vedder = vetter(chip = chip, visit = visit,
-                        stamps_dir =f'/media/fraserw/SecondStage/Projects/kbmod/DATA/rerun/diff_warpCompare/deepDiff/{visit}/warps/',
-                        stamps_grid = (9, 7),
-                        results_dir = '/media/fraserw/rocketdata/Projects/kbmod/kbmod_results/',
-                        plantLists_dir = f'/media/fraserw/SecondStage/Projects/kbmod/DATA/rerun/diff_warpCompare/deepDiff/{visit}/HSC-R2/warps/',
-                        contrast = contrasts[visit],
-                        max_assoc_dist = 5.0)
+    visit = args.visit
+    chip = str(args.chip).zfill(2)
+    contrast = args.contrast
 
-    else:
-        vedder = vetter(chip = chip, visit = visit,
-                        plantLists_dir = f'/media/fraserw/SecondStage/Projects/kbmod/DATA/rerun/diff_warpCompare/deepDiff/{visit}/HSC-R2/plantLists/',
-                        contrast = contrasts[visit])
-    vedder.activate(window_size_scale=2.2)
+    saves_path = f'/arc/home/{get_username()}/classy_vets/'
+
+
+
+    eddie = vetter(chip = chip, visit = visit,
+                   stamps_dir =f'/arc/projects/classy/warps/',
+                   stamps_grid = (9, 7),
+                   results_dir = f'/arc/projects/classy/kbmod_results/',
+                   plantLists_dir = f'/arc/projects/classy/warps/',
+                   personal_vets_path = f'{saves_path}',
+                   contrast = contrast,
+                   max_assoc_dist = 5.0)
+
+    eddie.activate(window_size_scale=2.2)
