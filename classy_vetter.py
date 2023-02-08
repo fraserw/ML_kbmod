@@ -1,3 +1,5 @@
+#! /usr/bin/env python
+
 import pylab as pyl, numpy as np
 import glob, pickle
 from astropy.visualization import interval, ZScaleInterval
