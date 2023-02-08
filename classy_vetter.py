@@ -131,7 +131,7 @@ class vetter():
             
         # check if the lengths of all the arrays match, as they must.
         if len(self.all_stamps[0])!= len(self.all_kb_xy) or len(self.all_stamps[1])!= len(self.all_kb_xy) or len(self.classes)!=len(self.all_kb_xy):
-            print('WARNING: Stamps length mean, median, kbmod output length, and/or classes length do not match!')
+            print('WARNING: Stamps length median, mean, kbmod output length, and/or classes length do not match!')
             print(f' stamps: {len(self.all_stamps[0])}, {len(self.all_stamps[1])}, kbmod results: {len(self.all_kb_xy)}, rn_classes: {len(self.classes)}')
             exit()
 
@@ -216,7 +216,6 @@ class vetter():
         s = self.stamps[1][::downscale, :, :]
         (n, B, C) = s.shape
         s = s.reshape(n*B, C)
-        #(z1,z2) = tzscale.zscale(s, contrast = self.contrast)
         zscaler = ZScaleInterval(contrast = self.contrast)
         (z1, z2) = zscaler.get_limits(values=s)
         self.zscale = (z1, z2)
@@ -224,7 +223,7 @@ class vetter():
 
 
     def save_single_frame_vets(self):
-        print('Saving vets in this window')
+        print('Caching vets in this window')
         b = min(len(self.elims),len(self.all_elims)-self.vet_counter)
         self.all_elims[self.vet_counter:self.vet_counter+b] = self.elims[:b]
         #print(self.all_elims[self.vet_counter:self.vet_counter+b])
@@ -411,7 +410,7 @@ class vetter():
 
         elif event.key =='?':
             print("\nHelp:\n")
-            print('   The left and right images of a source display the median and mean         ')
+            print('   The left and right images of a source display the mean and median         ')
             print('   shift-stacks respectively. The source information at the top shows the    ')
             print('   kbmod likelihood, flux estimate. NOT SHOWING (x,y) pixel positions.')
             print('')
