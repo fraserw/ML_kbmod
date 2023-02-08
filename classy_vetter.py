@@ -382,7 +382,7 @@ class vetter():
         elif event.key in ['n', 'N']:
             # here we save the interim clicks
             self.save_single_frame_vets()
-            print(self.vet_counter)
+            #print(self.vet_counter)
             if self.vet_counter+self.stamps_grid[0]*self.stamps_grid[1]<len(self.all_elims):
                 self.vet_counter +=self.stamps_grid[0]*self.stamps_grid[1]
                 self.display_stamps(start_ind = self.vet_counter)
@@ -420,7 +420,8 @@ class vetter():
             print('')
             print('   n/b - display the next/previous set of candidates if set is numerous ')
             print('     enough to need more than one screen. BUG: going back will erase         ')
-            print('     previously selected sources.')
+            print('     previously selected sources. Look for messaging in the bottom right     ')
+            print('     corner to state when the end of the source list has been reached.')
             print('   p -  label in red all of those sources close enough to be associated  with')
             print('     a planted source. Orange used to demark sources in randomized time      ')
             print('     sample that are not associated with planted sources. USE ONLY FOR       ')
