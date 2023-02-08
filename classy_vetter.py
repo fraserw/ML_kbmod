@@ -125,7 +125,11 @@ class vetter():
             self.all_rt_indices = np.zeros(len(self.all_kb_xy))
             self.all_rt_indices[self.rt_start_ind:] = 1
             self.rt_indices = self.all_rt_indices[np.where(self.classes)]
+        else:
+            self.all_rt_indices = np.array([])
+            self.rt_indices = np.array([])
 
+            
         # check if the lengths of all the arrays match, as they must.
         if len(self.all_stamps[0])!= len(self.all_kb_xy) or len(self.all_stamps[1])!= len(self.all_kb_xy) or len(self.classes)!=len(self.all_kb_xy):
             print('WARNING: Stamps length mean, median, kbmod output length, and/or classes length do not match!')
@@ -164,6 +168,7 @@ class vetter():
             self.plant_xy = np.array(self.plant_xy)
         else:
             self.plant_xy = np.array([[-100., -100., 0., 0., 0.]])
+
 
 
         if rtplantLists_dir is not None:
@@ -264,8 +269,9 @@ class vetter():
 
     
     def _makedir(self, pdir):
-        print(pdir)
-        if not os.path.isdir(pdir):
+        s = pdir.split('/')
+        ind = s.index('classy_vets')
+        if not os.path.isdir(pdir) and not os.path.isdir("/".join(s[:ind+1])):
             os.makedirs(pdir)
             
 
@@ -295,9 +301,9 @@ class vetter():
                 sp_ind = i*self.stamps_grid[1]+j
                 self.subplots[sp_ind].clear()
                 if start_ind+sp_ind <len(self.stamps[0]):
-                    if start_ind+sp_ind in self.plant_xy[:, 3] and self.reveal_plants:
+                    if (start_ind+sp_ind in self.plant_xy[:, 3] or start_ind+sp_ind in self.rtplant_xy[:,3]) and self.reveal_plants:
                         colour = 'r'
-                    elif start_ind+sp_ind in self.rtplant_xy[:, 3] and self.reveal_plants:
+                    elif (start_ind+sp_ind not in self.rtplant_xy[:, 3]) and (start_ind+sp_ind in self.rt_indices) and self.reveal_plants:
                         colour = 'orange'
                     else:
                         colour='0.9'
@@ -380,9 +386,12 @@ class vetter():
             if self.vet_counter+self.stamps_grid[0]*self.stamps_grid[1]<len(self.all_elims):
                 self.vet_counter +=self.stamps_grid[0]*self.stamps_grid[1]
                 self.display_stamps(start_ind = self.vet_counter)
+                self.subplots[-1].set_xlabel("")
                 pyl.draw()
             else:
                 print('At end of list')
+                self.subplots[-1].set_xlabel("End of list")
+                pyl.draw()
 
         elif event.key in ['b', 'b']:
             # here we save the interim clicks
@@ -413,8 +422,9 @@ class vetter():
             print('     enough to need more than one screen. BUG: going back will erase         ')
             print('     previously selected sources.')
             print('   p -  label in red all of those sources close enough to be associated  with')
-            print('     a planted source. Orange used to demark randomized time plants. USE ONLY')
-            print('     FOR TRAINING PURPOSES AND DO NOT HAVE ON DURING VETTING.')
+            print('     a planted source. Orange used to demark sources in randomized time      ')
+            print('     sample that are not associated with planted sources. USE ONLY FOR       ')
+            print('     TRAINING PURPOSES AND DO NOT HAVE ON DURING VETTING.')
             print('   a - toggle all DISPLAYED sources as good or bad.')
             print('   w - write vet selection to disk. Selection will be printed in terminal.')
             print('   q - quit. Will only quit if vets written first.')
@@ -445,13 +455,14 @@ if __name__ == "__main__":
                         help = 'The chip number of the data you wish to vet. e.g. 00')
     parser.add_argument('--contrast', default=0.5,
                         help = 'The z-zscale contrast used for display. DEFAULT=%(default)s.')
+    parser.add_argument('--grid', help = 'The grid shape of stamps to display (vertical, horizontal). Must be of form N,M with comma. DEFAULT=%(default)s. ', default='8,7')
     args = parser.parse_args()
 
     visit = args.visit
     chip = str(args.chip).zfill(2)
     contrast = args.contrast
 
-    saves_path = f'/arc/home/{get_username()}/classy_vets/'
+    saves_path = f'/arc/home/{get_username()}/classy_vets/{get_username()}'
 
 
     if visit in ['2022-08-01-AS1_July',
@@ -466,7 +477,9 @@ if __name__ == "__main__":
         rtstamps_dir = None
         rtplantLists_dir = None
         rtresults_dir = None
-    
+
+    s = args.grid.split(',')
+    gx,gy = int(float(s[0])), int(float(s[1]))
 
     eddie = vetter(chip = chip, visit = visit,
                    stamps_dir ='/arc/projects/classy/warps/',
@@ -476,7 +489,7 @@ if __name__ == "__main__":
                    personal_vets_path = f'{saves_path}',
                    rtplantLists_dir = rtplantLists_dir,
                    rtresults_dir = rtresults_dir,
-                   stamps_grid = (9, 7),
+                   stamps_grid = (gx, gy),
                    contrast = contrast,
                    max_assoc_dist = 5.0)
 
