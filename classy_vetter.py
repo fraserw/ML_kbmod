@@ -1,7 +1,6 @@
 import pylab as pyl, numpy as np
 import glob, pickle
-from trippy import tzscale
-from astropy.visualization import interval
+from astropy.visualization import interval, ZScaleInterval
 import matplotlib
 
 pyl.rcParams['keymap.quit'].remove('q')
@@ -217,7 +216,9 @@ class vetter():
         s = self.stamps[1][::downscale, :, :]
         (n, B, C) = s.shape
         s = s.reshape(n*B, C)
-        (z1,z2) = tzscale.zscale(s, contrast = self.contrast)
+        #(z1,z2) = tzscale.zscale(s, contrast = self.contrast)
+        zscaler = ZScaleInterval(contrast = self.contrast)
+        (z1, z2) = zscaler.get_limits(values=s)
         self.zscale = (z1, z2)
         self.normer = interval.ManualInterval(z1,z2)
 
