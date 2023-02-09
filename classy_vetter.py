@@ -273,9 +273,10 @@ class vetter():
     def _makedir(self, pdir):
         s = pdir.split('/')
         ind = s.index('classy_vets')
-        if not os.path.isdir(pdir) and not os.path.isdir("/".join(s[:ind+1])):
-            os.makedirs(pdir)
-            
+        for j in range(ind, len(s)):
+            print("/".join(s[:j+1]))
+            if not os.path.isdir("/".join(s[:j+1])):
+                os.makedirs(pdir)
 
     def make_window(self, window_size_scale = 1.3):
 
@@ -292,6 +293,7 @@ class vetter():
 
                 self.elims.append(False)
 
+        self.window.tight_layout(h_pad=3.0, w_pad=3.0)
         self.window.subplots_adjust(hspace=0.03, wspace=0.03)
         self.window.canvas.mpl_connect('button_press_event', self.selector_function)
         self.window.canvas.mpl_connect('key_press_event', self.draw_next)
@@ -323,7 +325,10 @@ class vetter():
                     self.subplots[sp_ind].imshow(self.normer(double_stamp))
                     self.subplots[sp_ind].xaxis.set_ticklabels([])
                     self.subplots[sp_ind].yaxis.set_ticklabels([])
-
+                else:
+                    self.subplots[sp_ind].set_xticks([])
+                    self.subplots[sp_ind].set_yticks([])
+                    
                 for spine in ['top', 'bottom', 'left', 'right']:
                     self.subplots[sp_ind].spines[spine].set_linewidth('3')
                     self.subplots[sp_ind].spines[spine].set_color('b')
@@ -463,14 +468,14 @@ if __name__ == "__main__":
 
     visit = args.visit
     chip = str(args.chip).zfill(2)
-    contrast = args.contrast
+    contrast = float(args.contrast)
 
     saves_path = f'/arc/home/{get_username()}/classy_vets/{get_username()}'
 
 
     if visit in ['2022-08-01-AS1_July',
                  '2022-08-04-AS2',
-                 '2022-08-26-AS1',
+                 '2022-08-26-AS2',
                  '2022-08-27-AS1',
                  '2022-08-27-ON1',]:
         rtplantLists_dir =  '/arc/projects/classy/rtwarps/'
