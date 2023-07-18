@@ -10,7 +10,8 @@ from keras.models import Model, load_model, Sequential
 from keras.layers import Input, Dense, Activation, Add, ZeroPadding2D, BatchNormalization, Flatten, Conv2D, MaxPool2D, Concatenate
 from keras.layers.core import Dropout
 from keras.callbacks import EarlyStopping, ModelCheckpoint
-from keras.optimizers import Adam
+#from keras.optimizers import adam_v2 as Adam
+from tensorflow.keras.optimizers import Adam
 
 ###for custom keras loss function
 #from keras.layers import Lambda, Multiply,Add
@@ -31,7 +32,8 @@ class resnet_model():
     def __init__(self, input_shape, learning_rate = 0.0007,
                  dropout_rate = 0.2,
                  num_dense_nodes = 64,
-                 num_models = 3, unique_labels = 2 ):
+                 num_models = 3, unique_labels = 2,
+                 block_layers = [2,2], initial_filter_size=16):
 
 
         super(resnet_model, self).__init__()
@@ -54,7 +56,8 @@ class resnet_model():
         self.optimizer = Adam(lr=self.lr, beta_1=self.beta_1, beta_2=self.beta_2,
                               epsilon=self.optimizer_epsilon,
                               clipnorm=self.clipnorm)
-        self.last_layer_activation = 'sigmoid'
+        
+        self.last_layer_activation = 'softmax'
 
         self.loss_func = 'categorical_crossentropy'
 
@@ -62,6 +65,9 @@ class resnet_model():
 
         self.classifiers = {}
 
+        self.block_layers = block_layers #[2, 2] # len==# of resnet layers, index==# of CNN layers in each resnet layer
+        self.initial_filter_size = initial_filter_size # the # of filters in the initial layers of the resnet. It doubles for each additional ResNet layer
+        
     def compile(self, verbose = 1):
 
         input_tensor = Input(shape=self.input_shape, name='input')
@@ -84,11 +90,11 @@ class resnet_model():
         x_skip = x
         # Layer 1
         x = Conv2D(filter, (3,3), padding = 'same')(x)
-        x = BatchNormalization(axis=-1)(x)
+        #####x = BatchNormalization(axis=-1)(x)
         x = Activation('relu')(x)
         # Layer 2
         x = Conv2D(filter, (3,3), padding = 'same')(x)
-        x = BatchNormalization(axis=-1)(x)
+        #####x = BatchNormalization(axis=-1)(x)
         # Add Residue
         x = Add()([x, x_skip])
         x = Activation('relu')(x)
@@ -99,11 +105,11 @@ class resnet_model():
         x_skip = x
         # Layer 1
         x = Conv2D(filter, (3,3), padding = 'same', strides = (2,2))(x)
-        x = BatchNormalization(axis=-1)(x)
+        #####x = BatchNormalization(axis=-1)(x)
         x = Activation('relu')(x)
         # Layer 2
         x = Conv2D(filter, (3,3), padding = 'same')(x)
-        x = BatchNormalization(axis=-1)(x)
+        #####x = BatchNormalization(axis=-1)(x)
         # Processing Residue with conv(1,1)
         x_skip = Conv2D(filter, (1,1), strides = (2,2))(x_skip)
         # Add Residue
@@ -115,12 +121,12 @@ class resnet_model():
     def mag_resnet_model(self, x):
         # Step 2 (Initial Conv layer along with maxPool)
         x = Conv2D(filters=16, kernel_size=(3, 3), input_shape=self.input_shape, padding='same')(x)
-        x = BatchNormalization()(x)
+        #####x = BatchNormalization()(x)
         x = Activation('relu')(x)
         x = MaxPool2D(pool_size=3, strides=2, padding='same')(x)
         # Define size of sub-blocks and initial filter size
-        block_layers = [2, 2]#[3, 4, 6, 3]
-        filter_size = 16
+        block_layers = self.block_layers
+        filter_size = self.initial_filter_size
         # Step 3 Add the Resnet Blocks
         for i in range(len(block_layers)):
             if i == 0:
@@ -139,8 +145,8 @@ class resnet_model():
         x = MaxPool2D(pool_size=(2,2), padding = 'same')(x)
         x = Flatten()(x)
         x = Dense(self.num_dense_nodes, activation = self.activation)(x)
-        #x = Dense(self.num_dense_nodes, activation = self.activation)(x)
-        output = Dense(self.unique_labels, activation = 'softmax')(x)
+        output = Dense(self.unique_labels, activation = self.last_layer_activation)(x)
+        ####output = Dense(self.unique_labels, activation = 'sigmoid')(x) #### this seems to enhance the peaks of middling probability. softmax seems to minimize them, which is good.
         return output
 
         """
@@ -270,12 +276,18 @@ class resnet_model():
             p = self.models[ii].predict(X, verbose=verbose, batch_size=batch_size)
             full_preds.append(p)
 
+        full_preds = np.array(full_preds) #shape (# internal_model per model, # sources, # models)
+
+        # for merge_types mean/median,max merges of internal models, and returns array of shape (# of sources, # of models)
+        # for merge_type==None it returns the full_probability array
         if merge_type =='mean':
             out = np.mean(full_preds, axis=0)
         elif merge_type =='median':
             out = np.median(full_preds, axis=0)
         elif merge_type =='max':
             out = np.max(full_preds, axis=0)
+        elif merge_type == None:
+            out = full_preds
         return(out)
 
 
